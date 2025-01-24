@@ -1,0 +1,669 @@
+---
+title: "Case III"
+output: html_document
+date: "2024-12-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+#install.packages("tidyverse")
+#install.packages("caret")
+#install.packages("randomForest")
+#install.packages("kableExtra")
+library(tidyverse)  
+library(dplyr)      
+library(ggplot2)    
+library(readr)      
+library(caret)      
+library(randomForest)  
+library(lubridate)  
+library(knitr)      
+library(kableExtra) 
+library(ranger)      
+library(tidyr)       
+library(scales) 
+library(stringr)
+```
+
+## Data Importing
+```{r import}
+# Training
+consumer_training <- read_csv("consumerData_training15K_studentVersion.csv")
+donations_training <- read_csv("DonationsData_training15K_studentVersion.csv")
+inhouse_training <- read_csv("inHouseData_training15K_studentVersion.csv")
+magazine_training <- read_csv("magazineData_training15K_studentVersion.csv")
+political_training <- read_csv("politicalData_training15K_studentVersion.csv")
+
+# Testing
+consumer_testing <- read_csv("consumerData_testing5K_studentVersion.csv")
+donations_testing <- read_csv("DonationsData_testing5K_studentVersion.csv")
+inhouse_testing <- read_csv("inHouseData_testing5K_studentVersion.csv")
+magazine_testing <- read_csv("magazineData_testing5K_studentVersion.csv")
+political_testing <- read_csv("politicalData_testing5K_studentVersion.csv")
+
+# Prospects
+consumer_prospects <- read_csv("consumerData_prospects6K_studentVersion.csv")
+donations_prospects <- read_csv("DonationsData_prospects6K_studentVersion.csv")
+inhouse_prospects <- read_csv("inHouseData_prospects6K_studentVersion.csv")
+magazine_prospects <- read_csv("magazineData_prospects6K_studentVersion.csv")
+political_prospects <- read_csv("politicalData_prospects6K_studentVersion.csv")
+```
+
+## Data Structure & Initial Inspection
+```{r inspection}
+cat("------ Consumer Training Data ------\n")
+glimpse(consumer_training)
+summary(consumer_training)
+dim(consumer_training)
+
+cat("\n------ Donations Training Data ------\n")
+glimpse(donations_training)
+summary(donations_training)
+dim(donations_training)
+
+cat("\n------ In-House Training Data ------\n")
+glimpse(inhouse_training)
+summary(inhouse_training)
+dim(inhouse_training)
+
+cat("\n------ Magazine Training Data ------\n")
+glimpse(magazine_training)
+summary(magazine_training)
+dim(magazine_training)
+
+cat("\n------ Political Training Data ------\n")
+glimpse(political_training)
+summary(political_training)
+dim(political_training)
+
+cat("\n------ Consumer Testing Data ------\n")
+glimpse(consumer_testing)
+summary(consumer_testing)
+dim(consumer_testing)
+
+cat("\n------ Donations Testing Data ------\n")
+glimpse(donations_testing)
+summary(donations_testing)
+dim(donations_testing)
+
+cat("\n------ In-House Testing Data ------\n")
+glimpse(inhouse_testing)
+summary(inhouse_testing)
+dim(inhouse_testing)
+
+cat("\n------ Magazine Testing Data ------\n")
+glimpse(magazine_testing)
+summary(magazine_testing)
+dim(magazine_testing)
+
+cat("\n------ Political Testing Data ------\n")
+glimpse(political_testing)
+summary(political_testing)
+dim(political_testing)
+
+cat("\n------ Consumer Prospects Data ------\n")
+glimpse(consumer_prospects)
+summary(consumer_prospects)
+dim(consumer_prospects)
+
+cat("\n------ Donations Prospects Data ------\n")
+glimpse(donations_prospects)
+summary(donations_prospects)
+dim(donations_prospects)
+
+cat("\n------ In-House Prospects Data ------\n")
+glimpse(inhouse_prospects)
+summary(inhouse_prospects)
+dim(inhouse_prospects)
+
+cat("\n------ Magazine Prospects Data ------\n")
+glimpse(magazine_prospects)
+summary(magazine_prospects)
+dim(magazine_prospects)
+
+cat("\n------ Political Prospects Data ------\n")
+glimpse(political_prospects)
+summary(political_prospects)
+dim(political_prospects)
+```
+
+## Converting categoricals to factors
+```{r cleaning1}
+# Converting specified columns to factors
+convert_to_factors <- function(df, columns) {
+  # Filter only columns that exist in the dataframe
+  available_cols <- columns[columns %in% colnames(df)]
+  
+  df <- df %>%
+    mutate(across(all_of(available_cols), as.factor))
+  
+  return(df)
+}
+
+# List of categorical columns
+categorical_cols <- c(
+  'ResidenceHHGenderDescription', 
+  'EthnicDescription', 
+  'BroadEthnicGroupings', 
+  'HomeOwnerRenter', 
+  'MosaicZ4', 
+  'Investor', 
+  'BusinessOwner', 
+  'Education', 
+  'OccupationIndustry', 
+  'HorseOwner', 
+  'CatOwner', 
+  'DogOwner', 
+  'OtherPetOwner', 
+  'HomeOffice', 
+  'PropertyType', 
+  'Gender', 
+  'PartiesDescription', 
+  'ReligionsDescription', 
+  'LikelyUnionMember', 
+  'GunOwner', 
+  'Veteran', 
+  'supportsAffordableCareAct', 
+  'supportsGayMarriage', 
+  'supportsGunControl', 
+  'supportsTaxesRaise', 
+  'overallsocialviews', 
+  'DonatestoConservativeCauses', 
+  'DonatestoLiberalCauses'
+)
+
+# Applying factor conversion to all datasets
+consumer_training <- convert_to_factors(consumer_training, categorical_cols)
+consumer_testing <- convert_to_factors(consumer_testing, categorical_cols)
+consumer_prospects <- convert_to_factors(consumer_prospects, categorical_cols)
+
+donations_training <- convert_to_factors(donations_training, categorical_cols)
+donations_testing <- convert_to_factors(donations_testing, categorical_cols)
+donations_prospects <- convert_to_factors(donations_prospects, categorical_cols)
+
+inhouse_training <- convert_to_factors(inhouse_training, categorical_cols)
+inhouse_testing <- convert_to_factors(inhouse_testing, categorical_cols)
+inhouse_prospects <- convert_to_factors(inhouse_prospects, categorical_cols)
+
+magazine_training <- convert_to_factors(magazine_training, categorical_cols)
+magazine_testing <- convert_to_factors(magazine_testing, categorical_cols)
+magazine_prospects <- convert_to_factors(magazine_prospects, categorical_cols)
+
+political_training <- convert_to_factors(political_training, categorical_cols)
+political_testing <- convert_to_factors(political_testing, categorical_cols)
+political_prospects <- convert_to_factors(political_prospects, categorical_cols)
+```
+
+## Checking structure after conversion
+```{r check_structure}
+check_structure <- function(df, df_name) {
+  cat("\n------", df_name, "------\n")
+  str(df)
+}
+
+# Checking structure of all training datasets
+check_structure(consumer_training, "Consumer Training Data")
+check_structure(donations_training, "Donations Training Data")
+check_structure(inhouse_training, "In-House Training Data")
+check_structure(magazine_training, "Magazine Training Data")
+check_structure(political_training, "Political Training Data")
+
+# Checking structure of all testing datasets
+check_structure(consumer_testing, "Consumer Testing Data")
+check_structure(donations_testing, "Donations Testing Data")
+check_structure(inhouse_testing, "In-House Testing Data")
+check_structure(magazine_testing, "Magazine Testing Data")
+check_structure(political_testing, "Political Testing Data")
+
+# Checking structure of all prospect datasets
+check_structure(consumer_prospects, "Consumer Prospects Data")
+check_structure(donations_prospects, "Donations Prospects Data")
+check_structure(inhouse_prospects, "In-House Prospects Data")
+check_structure(magazine_prospects, "Magazine Prospects Data")
+check_structure(political_prospects, "Political Prospects Data")
+```
+
+## Dropping Columns with all NA
+```{r drop}
+# Function to drop columns with all NA values
+drop_na_columns <- function(df, df_name) {
+  cat("\n------ Dropping NA Columns for:", df_name, "------\n")
+  
+  before_cols <- colnames(df)
+  
+  df_cleaned <- df %>% select(where(~ !all(is.na(.))))
+  
+  after_cols <- colnames(df_cleaned)
+  
+  dropped_cols <- setdiff(before_cols, after_cols)
+  
+  cat("Columns before:", length(before_cols), "\n")
+  cat("Columns after:", length(after_cols), "\n")
+  if (length(dropped_cols) > 0) {
+    cat("Dropped columns:\n", paste(dropped_cols, collapse = ", "), "\n")
+  } else {
+    cat("No columns were dropped.\n")
+  }
+  
+  return(df_cleaned)
+}
+
+consumer_training <- drop_na_columns(consumer_training, "Consumer Training Data")
+consumer_testing <- drop_na_columns(consumer_testing, "Consumer Testing Data")
+consumer_prospects <- drop_na_columns(consumer_prospects, "Consumer Prospects Data")
+
+donations_training <- drop_na_columns(donations_training, "Donations Training Data")
+donations_testing <- drop_na_columns(donations_testing, "Donations Testing Data")
+donations_prospects <- drop_na_columns(donations_prospects, "Donations Prospects Data")
+
+inhouse_training <- drop_na_columns(inhouse_training, "In-House Training Data")
+inhouse_testing <- drop_na_columns(inhouse_testing, "In-House Testing Data")
+inhouse_prospects <- drop_na_columns(inhouse_prospects, "In-House Prospects Data")
+
+magazine_training <- drop_na_columns(magazine_training, "Magazine Training Data")
+magazine_testing <- drop_na_columns(magazine_testing, "Magazine Testing Data")
+magazine_prospects <- drop_na_columns(magazine_prospects, "Magazine Prospects Data")
+
+political_training <- drop_na_columns(political_training, "Political Training Data")
+political_testing <- drop_na_columns(political_testing, "Political Testing Data")
+political_prospects <- drop_na_columns(political_prospects, "Political Prospects Data")
+```
+
+here-------
+
+here3
+## Dropping Unnecessary Columns
+```{r dropping}
+# Function to drop unnecessary columns
+drop_unnecessary_columns <- function(df, columns_to_drop, df_name) {
+  cat("\n------ Dropping Unnecessary Columns for:", df_name, "------\n")
+  
+  before_cols <- colnames(df)
+  
+  columns_to_drop <- columns_to_drop[columns_to_drop %in% colnames(df)]
+  df_cleaned <- df %>% select(-all_of(columns_to_drop))
+  
+  after_cols <- colnames(df_cleaned)
+  
+  dropped_cols <- setdiff(before_cols, after_cols)
+  
+  cat("Columns before:", length(before_cols), "\n")
+  cat("Columns after:", length(after_cols), "\n")
+  if (length(dropped_cols) > 0) {
+    cat("Dropped columns:\n", paste(dropped_cols, collapse = ", "), "\n")
+  } else {
+    cat("No columns were dropped.\n")
+  }
+  
+  return(df_cleaned)
+}
+
+# List of unnecessary columns to drop
+columns_to_drop <- c(
+  'FirstName',              # Personal identifiers
+  'LastName',               # Personal identifiers
+  'TelephonesFullPhone',    # Personal identifiers
+  'lat',                    # Geospatial coordinate
+  'lon',                    # Geospatial coordinate
+  'county',                 # Too many unique categories
+  'city',                   # Too many unique categories
+  'fips',                   # FIPS codes are too specific
+  'stateFips'               # Dropping stateFips
+)
+
+inhouse_training <- drop_unnecessary_columns(inhouse_training, columns_to_drop, "In-House Training Data")
+inhouse_testing <- drop_unnecessary_columns(inhouse_testing, columns_to_drop, "In-House Testing Data")
+inhouse_prospects <- drop_unnecessary_columns(inhouse_prospects, columns_to_drop, "In-House Prospects Data")
+```
+
+## Imputing Missing Values
+```{r imputing}
+# Function to impute missing values
+impute_missing_values <- function(df, df_name) {
+  cat("\n------ Imputing Missing Values for:", df_name, "------\n")
+  
+  # List of numeric columns and categorical columns
+  numeric_cols <- colnames(df)[sapply(df, is.numeric)]
+  categorical_cols <- colnames(df)[sapply(df, is.character) | sapply(df, is.factor)]
+  
+  # Impute missing values for numeric columns (with median)
+  for (col in numeric_cols) {
+    if (any(is.na(df[[col]]))) {
+      cat("Imputing missing values in numeric column:", col, "\n")
+      median_value <- median(df[[col]], na.rm = TRUE)
+      df[[col]][is.na(df[[col]])] <- median_value
+    }
+  }
+  
+  # Impute missing values for categorical columns (with "Unknown")
+  for (col in categorical_cols) {
+    if (any(is.na(df[[col]]))) {
+      cat("Imputing missing values in categorical column:", col, "\n")
+      if (is.factor(df[[col]])) {
+        levels(df[[col]]) <- c(levels(df[[col]]), "Unknown")
+      }
+      df[[col]][is.na(df[[col]])] <- "Unknown"
+    }
+  }
+  
+  return(df)
+}
+
+# Applying imputation
+consumer_training <- impute_missing_values(consumer_training, "Consumer Training Data")
+consumer_testing <- impute_missing_values(consumer_testing, "Consumer Testing Data")
+consumer_prospects <- impute_missing_values(consumer_prospects, "Consumer Prospects Data")
+
+donations_training <- impute_missing_values(donations_training, "Donations Training Data")
+donations_testing <- impute_missing_values(donations_testing, "Donations Testing Data")
+donations_prospects <- impute_missing_values(donations_prospects, "Donations Prospects Data")
+
+inhouse_training <- impute_missing_values(inhouse_training, "In-House Training Data")
+inhouse_testing <- impute_missing_values(inhouse_testing, "In-House Testing Data")
+inhouse_prospects <- impute_missing_values(inhouse_prospects, "In-House Prospects Data")
+
+magazine_training <- impute_missing_values(magazine_training, "Magazine Training Data")
+magazine_testing <- impute_missing_values(magazine_testing, "Magazine Testing Data")
+magazine_prospects <- impute_missing_values(magazine_prospects, "Magazine Prospects Data")
+
+political_training <- impute_missing_values(political_training, "Political Training Data")
+political_testing <- impute_missing_values(political_testing, "Political Testing Data")
+political_prospects <- impute_missing_values(political_prospects, "Political Prospects Data")
+```
+
+## Merging Datasets & Checking
+```{r merge}
+# Merging datasets on tmpID using left joins
+merge_datasets <- function(consumer, donations, inhouse, magazine, political, df_name) {
+  cat("\n------ Merging Datasets for:", df_name, "------\n")
+  
+  merged_df <- consumer %>%
+    left_join(donations, by = "tmpID") %>%
+    left_join(inhouse, by = "tmpID") %>%
+    left_join(magazine, by = "tmpID") %>%
+    left_join(political, by = "tmpID")
+  
+  cat("Merged dataset rows:", nrow(merged_df), "\n")
+  cat("Merged dataset columns:", ncol(merged_df), "\n")
+  return(merged_df)
+}
+
+training_merged <- merge_datasets(
+  consumer_training, 
+  donations_training, 
+  inhouse_training, 
+  magazine_training, 
+  political_training, 
+  "Training Data"
+)
+
+testing_merged <- merge_datasets(
+  consumer_testing, 
+  donations_testing, 
+  inhouse_testing, 
+  magazine_testing, 
+  political_testing, 
+  "Testing Data"
+)
+
+prospects_merged <- merge_datasets(
+  consumer_prospects, 
+  donations_prospects, 
+  inhouse_prospects, 
+  magazine_prospects, 
+  political_prospects, 
+  "Prospect Data"
+)
+
+# Checking for duplicate tmpID
+check_duplicates <- function(df, df_name) {
+  cat("\n------ Check Duplicates for:", df_name, "------\n")
+  duplicate_count <- sum(duplicated(df$tmpID))
+  cat("Number of duplicate tmpIDs:", duplicate_count, "\n")
+  if (duplicate_count == 0) {
+    cat("No duplicates found in", df_name, "\n")
+  } else {
+    cat("Duplicates detected in", df_name, "\n")
+  }
+}
+
+check_duplicates(training_merged, "Training Data")
+check_duplicates(testing_merged, "Testing Data")
+check_duplicates(prospects_merged, "Prospect Data")
+
+# Checking for missing data in the dataset
+check_missing_values <- function(df, df_name) {
+  cat("\n------ Check Missing Values for:", df_name, "------\n")
+  na_counts <- colSums(is.na(df))
+  missing_cols <- na_counts[na_counts > 0]
+  if (length(missing_cols) > 0) {
+    cat("Columns with missing values in", df_name, ":\n")
+    print(missing_cols)
+  } else {
+    cat("No missing values detected in", df_name, "\n")
+  }
+}
+
+# Checking for missing values in merged datasets
+check_missing_values(training_merged, "Training Data")
+check_missing_values(testing_merged, "Testing Data")
+check_missing_values(prospects_merged, "Prospect Data")
+
+# Displaying structure of merged datasets
+check_structure(training_merged, "Training Data")
+check_structure(testing_merged, "Testing Data")
+check_structure(prospects_merged, "Prospect Data")
+```
+
+-------here2
+## Column Consistency
+```{r columns}
+# Function to print column differences
+compare_columns <- function(df1, df2, name1, name2) {
+  cols1 <- colnames(df1)
+  cols2 <- colnames(df2)
+  
+  cat("\nColumns in", name1, "but not in", name2, ":\n")
+  print(setdiff(cols1, cols2))
+  
+  cat("\nColumns in", name2, "but not in", name1, ":\n")
+  print(setdiff(cols2, cols1))
+}
+
+# Compare columns across datasets
+compare_columns(training_merged, testing_merged, "training", "testing")
+compare_columns(training_merged, prospects_merged, "training", "prospects")
+
+# Get common columns across all datasets
+common_cols <- Reduce(intersect, list(
+  colnames(training_merged),
+  colnames(testing_merged),
+  colnames(prospects_merged)
+))
+
+# Remove 'yHat' from common columns for prospects
+common_cols <- common_cols[common_cols != "yHat"]
+
+# Subset all datasets to use only common columns
+training_merged <- training_merged[, c(common_cols, "yHat")]
+testing_merged <- testing_merged[, c(common_cols, "yHat")]
+prospects_merged <- prospects_merged[, common_cols]
+```
+
+## Dropping 'tmpID' for Training & Testing
+```{r ID_drop}
+# Drop tmpID for training and testing
+training_merged <- training_merged %>% select(-tmpID)
+testing_merged <- testing_merged %>% select(-tmpID)
+```
+
+```{r feature_selection}
+# Get all columns except 'yHat' that are common across datasets
+predictors <- setdiff(colnames(training_merged), "yHat")
+
+# Subset datasets to use only predictor columns
+training_predictors <- training_merged[, predictors]
+testing_predictors <- testing_merged[, predictors]
+prospects_predictors <- prospects_merged[, predictors]
+
+# Making sure to convert character columns to factors in all datasets
+training_predictors <- training_predictors %>%
+  mutate(across(where(is.character), as.factor))
+
+testing_predictors <- testing_predictors %>%
+  mutate(across(where(is.character), as.factor))
+
+prospects_predictors <- prospects_predictors %>%
+  mutate(across(where(is.character), as.factor))
+
+# Storing target variable separately
+training_target <- training_merged$yHat
+testing_target <- testing_merged$yHat
+```
+
+```{r model}
+# Train Random Forest Model
+set.seed(123)
+rf_model <- ranger(
+  y = training_target,
+  x = training_predictors,
+  num.trees = 100,
+  mtry = floor(sqrt(ncol(training_predictors))),
+  min.node.size = 5,
+  importance = "permutation",
+  verbose = TRUE
+)
+```
+
+```{r eval}
+# Training Set Evaluation
+train_predictions <- predict(rf_model, data = training_predictors)$predictions
+train_rmse <- sqrt(mean((training_target - train_predictions)^2))
+train_rsq <- 1 - sum((training_target - train_predictions)^2) / 
+  sum((training_target - mean(training_target))^2)
+
+cat("\nTraining Set Metrics:\n")
+cat("RMSE:", round(train_rmse, 2), "\n")
+cat("R-squared:", round(train_rsq, 4), "\n")
+
+# Testing Set Evaluation
+test_predictions <- predict(rf_model, data = testing_predictors)$predictions
+test_rmse <- sqrt(mean((testing_target - test_predictions)^2))
+test_rsq <- 1 - sum((testing_target - test_predictions)^2) / 
+  sum((testing_target - mean(testing_target))^2)
+
+cat("\nTesting Set Metrics:\n")
+cat("RMSE:", round(test_rmse, 2), "\n")
+cat("R-squared:", round(test_rsq, 4), "\n")
+```
+
+```{r prospects}
+# Generating predictions for prospects
+prospect_predictions <- predict(rf_model, data = prospects_predictors)$predictions
+
+# Saving final predictions
+final_predictions <- data.frame(
+  tmpID = prospects_merged$tmpID,
+  predicted_spend = round(prospect_predictions, 2)
+) %>%
+  arrange(desc(predicted_spend))
+
+final_predictions
+```
+
+## Feature Importance
+```{r feature_imp}
+# Getting feature importance
+importance_scores <- rf_model$variable.importance
+importance_df <- data.frame(
+  Feature = names(importance_scores),
+  Importance = importance_scores
+) %>%
+  arrange(desc(Importance)) %>%
+  head(20)
+
+# Plotting feature importance
+ggplot(importance_df, aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    title = "Top 20 Most Important Features for BBY Spend Prediction",
+    x = "Features",
+    y = "Importance Score"
+  )
+```
+
+## Model Performance Plot
+```{r visual1}
+# Model Performance Plot
+performance_df <- data.frame(
+  Actual = c(training_target, testing_target),
+  Predicted = c(train_predictions, test_predictions),
+  Dataset = c(rep("Training", length(train_predictions)), 
+              rep("Testing", length(test_predictions)))
+)
+
+ggplot(performance_df, aes(x = Actual, y = Predicted, color = Dataset)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  theme_minimal() +
+  scale_x_continuous(labels = dollar_format()) +
+  scale_y_continuous(labels = dollar_format()) +
+  labs(
+    title = "Model Performance: Actual vs Predicted Spend",
+    x = "Actual Spend ($)",
+    y = "Predicted Spend ($)"
+  )
+```
+
+## Prediction Distribution
+```{r visual2}
+# Prediction Distribution Plot
+ggplot(data.frame(predictions = prospect_predictions), aes(x = predictions)) +
+  geom_histogram(fill = "steelblue", bins = 50) +
+  theme_minimal() +
+  scale_x_continuous(labels = dollar_format()) +
+  labs(
+    title = "Distribution of Predicted Prospect Spending",
+    x = "Predicted Spend ($)",
+    y = "Count"
+  )
+```
+
+## Model Summary
+```{r summary}
+model_summary <- data.frame(
+  Metric = c(
+    "Training RMSE",
+    "Testing RMSE",
+    "Training R-squared",
+    "Testing R-squared",
+    "Average Predicted Prospect Spend",
+    "Median Predicted Prospect Spend",
+    "Min Predicted Prospect Spend",
+    "Max Predicted Prospect Spend"
+  ),
+  Value = c(
+    round(train_rmse, 2),
+    round(test_rmse, 2),
+    round(train_rsq, 4),
+    round(test_rsq, 4),
+    round(mean(prospect_predictions), 2),
+    round(median(prospect_predictions), 2),
+    round(min(prospect_predictions), 2),
+    round(max(prospect_predictions), 2)
+  )
+)
+
+model_summary
+```
+
+## Saving Predictions
+```{r save_csv}
+write.csv(final_predictions, "bby_prospect_predictions.csv")
+```
+

@@ -1,0 +1,1 @@
+.csv files are not attached because of size. here there should be three .csv files called: movies.csv, people.csv, and stars.csv

@@ -1,0 +1,517 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+#' Author: Mohamed Yehia Mokhtar Salama
+#' Date: October 6th, 2024
+#' Purpose: OKCupid Case I
+#' 
+
+#### Importing Necessary Libraries
+```{r}
+#install.packages("ggplot2")
+library(ggplot2)
+library(dplyr)
+```
+
+#### Setting My WD
+```{r}
+setwd("/cloud/project")
+```
+
+#### Seeing All Files in WD
+```{r}
+dir()
+```
+
+#### Importing All Data
+```{r}
+profiles <- read.csv('profiles.csv')
+latlon <- read.csv('LatLon.csv')
+shared_census <- read.csv("sharedCensus2010Vars.csv")
+address <- read.csv("addr.csv")
+```
+
+#### Making Sure Data Is Loaded and Displaying Head
+```{r}
+head(profiles)
+head(latlon)
+#head(shared_census)
+head(address)
+```
+#### Summary statistics for all datasets
+```{r}
+summary(profiles)
+summary(latlon)
+#summary(shared_census)
+summary(address)
+```
+#### Checking Datatypes
+```{r}
+str(profiles)
+str(latlon)
+#str(shared_census)
+str(address)
+```
+# Missing Values Check
+```{r}
+colSums(is.na(profiles))
+colSums(is.na(latlon))
+#colSums(is.na(shared_census))
+colSums(is.na(address))
+```
+#### Converting Necessary Datatypes
+```{r}
+# Convert character columns to factors for 'profiles' dataset
+profiles$body_type <- as.factor(profiles$body_type)
+profiles$diet <- as.factor(profiles$diet)
+profiles$drinks <- as.factor(profiles$drinks)
+profiles$drugs <- as.factor(profiles$drugs)
+profiles$education <- as.factor(profiles$education)
+profiles$ethnicity <- as.factor(profiles$ethnicity)
+profiles$job <- as.factor(profiles$job)
+profiles$offspring <- as.factor(profiles$offspring)
+profiles$orientation <- as.factor(profiles$orientation)
+profiles$pets <- as.factor(profiles$pets)
+profiles$religion <- as.factor(profiles$religion)
+profiles$sex <- as.factor(profiles$sex)
+profiles$sign <- as.factor(profiles$sign)
+profiles$smokes <- as.factor(profiles$smokes)
+profiles$speaks <- as.factor(profiles$speaks)
+profiles$status <- as.factor(profiles$status)
+
+# Convert address columns to factors
+address$location <- as.factor(address$location)
+address$city <- as.factor(address$city)
+address$county <- as.factor(address$county)
+address$state <- as.factor(address$state)
+
+# Convert 'last_online' to a datetime object
+profiles$last_online <- as.POSIXct(profiles$last_online, format = "%Y-%m-%d %H:%M:%S")
+
+# Checking the structure of profiles after conversion
+str(profiles)
+```
+
+#### Some Exploration: Distribution Plots
+```{r}
+# For Profiles Dataset
+numeric_vars_profiles <- sapply(profiles, is.numeric)
+profiles_numeric <- profiles[, numeric_vars_profiles]
+par(mfrow = c(2, 2)) # Set up plotting area for multiple plots
+for (var in names(profiles_numeric)) {
+  hist(profiles_numeric[[var]], main = paste("Distribution of", var), xlab = var, col = "blue")
+}
+```
+
+#### Some Exploration: Bar Plots for Categorical Variables
+```{r}
+# Profiles Dataset
+categorical_vars_profiles <- sapply(profiles, is.factor)
+profiles_categorical <- profiles[, categorical_vars_profiles]
+par(mfrow = c(2, 2))
+for (var in names(profiles_categorical)) {
+  barplot(table(profiles_categorical[[var]]), main = paste("Bar Plot of", var), xlab = var, col = "blue")
+}
+```
+
+#### Handling Missing 'income' Values
+```{r}
+# Checking how many missing values exist in 'income'
+sum(is.na(profiles$income))
+
+# Imputeing missing 'income' values with the mean of non-missing values
+profiles$income[is.na(profiles$income)] <- mean(profiles$income, na.rm = TRUE)
+```
+
+#### Feature Engineering for Status and Education
+```{r}
+# Feature engineering a new column 'statEDU' by combining 'status' and 'education'
+profiles$statEDU <- paste(profiles$status, profiles$education, sep = '_')
+
+# Displaying the distribution of the new feature
+table(profiles$statEDU)
+```
+
+#### Joining All Data
+```{r}
+# Enrich 'profiles' data by joining with 'LatLon.csv' on the 'location' column
+moreData <- left_join(profiles, latlon, by = 'location')
+
+# Join with sharedCensus2010Vars dataset
+#moreData_enriched <- left_join(moreData, shared_census, by = 'location')
+
+# Join with address dataset
+moreData_enriched <- left_join(moreData, address, by = 'location')
+
+head(moreData_enriched)
+```
+
+#### Handling Missing Data Using 'complete.cases()' and Dropping Columns with 50% or more missing values
+```{r}
+# Calculate the percentage of missing values for each column
+missing_percentage <- colSums(is.na(moreData_enriched)) / nrow(moreData_enriched) * 100
+
+# Convert the missing percentage data to a data frame for visualization
+missing_df <- data.frame(variable = names(missing_percentage), 
+                         missing_percent = missing_percentage)
+
+# Plot the missing percentages
+ggplot(missing_df, aes(x = reorder(variable, -missing_percent), y = missing_percent)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +  
+  labs(title = "Percentage of Missing Data by Variable",
+       x = "Variables", 
+       y = "Percentage of Missing Data") +
+  theme_minimal()
+
+# Dropping Columns with High Percentage of Missing Values
+# Deciding to drop columns with more than 50% missing values
+threshold <- 50 
+columns_to_drop <- names(missing_percentage[missing_percentage > threshold])
+
+# Dropping these columns from the dataset
+moreData_cleaned <- moreData_enriched[, !(names(moreData_enriched) %in% columns_to_drop)]
+
+# Check the new dataset
+str(moreData_cleaned)
+
+#### Handling Missing Data Using 'complete.cases()'
+# Create a new dataset that includes only complete cases (rows with no missing values)
+completeMoreData <- moreData_cleaned[complete.cases(moreData_cleaned),]
+
+# Check the number of rows in the complete dataset
+nrow(completeMoreData)
+
+# Check the head of the new data
+head(completeMoreData)
+
+str(completeMoreData)
+```
+```{r}
+# Age vs Drinks: Density plot to show how drinking habits vary across different age groups
+ggplot(completeMoreData, aes(x = age, fill = drinks)) +
+  geom_density(alpha = 0.6) +  
+  labs(title = "Age Distribution by Drinking Habits", x = "Age", fill = "Drinks") +
+  theme_minimal() +
+  theme(
+    panel.background = element_rect(fill = "#5DC0F8", color = NA),  
+    plot.background = element_rect(fill = "#5DC0F8", color = NA),   
+    panel.grid.major = element_blank(),  
+    panel.grid.minor = element_blank(),  
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  
+    legend.position = "right",  
+    axis.title = element_text(size = 14, face = "bold"),  
+    axis.text = element_text(size = 12, face = "bold")    
+  ) +
+  scale_fill_manual(values = c(
+    "desperately" = "#FF6347",  
+    "not at all" = "#4682B4",   
+    "often" = "#32CD32",        
+    "rarely" = "#FFD700",       
+    "socially" = "#8A2BE2",     
+    "very often" = "#FF4500"    
+  ))
+```
+
+```{r}
+# Body Type vs Diet: Stacked bar chart to show relationship between body type and diet preferences
+ggplot(completeMoreData, aes(x = body_type, fill = diet)) +
+  geom_bar(position = "fill") + 
+  labs(title = "Diet Preferences by Body Type", x = "Body Type", fill = "Diet Preferences") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Religion vs Drinks: Stacked bar chart to show relationship between religion and drinking habits
+ggplot(completeMoreData, aes(x = religion, fill = drinks)) +
+  geom_bar(position = "fill") +  # Stacked bar chart for religion vs drinking
+  labs(title = "Drinking Habits by Religion", x = "Religion", fill = "Drinks") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+# Smoking vs Diet: Stacked bar chart to show the relationship between smoking habits and diet preferences
+ggplot(completeMoreData, aes(x = diet, fill = smokes)) +
+  geom_bar(position = "fill") + 
+  labs(title = "Smoking Habits by Diet Preferences", x = "Diet", fill = "Smoking Habits") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+```{r}
+# Pets vs Relationship Status: Stacked bar chart to show the relationship between pet preferences and relationship status
+ggplot(completeMoreData, aes(x = pets, fill = status)) +
+  geom_bar(position = "fill") +  
+  labs(title = "Relationship Status by Pet Preferences", x = "Pets", fill = "Relationship Status") + 
+  theme_minimal() +
+  theme(
+    panel.background = element_rect(fill = "#5DC0F8", color = NA),  
+    plot.background = element_rect(fill = "#5DC0F8", color = NA),   
+    panel.grid.major = element_blank(),  
+    panel.grid.minor = element_blank(),  
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  
+    legend.position = "right",  
+    axis.title = element_text(size = 14, face = "bold"),  
+    axis.text = element_text(size = 12, face = "bold"),   
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)  
+  ) +
+  scale_fill_manual(values = c(
+    "available" = "#FF6347",    
+    "married" = "#4682B4",      
+    "seeing someone" = "#32CD32",
+    "single" = "#FFD700",       
+    "unknown" = "#8A2BE2"       
+  ))
+```
+
+```{r}
+# Calculating the total number of entries
+total_entries <- nrow(completeMoreData)
+
+# Calculating the count for each pet category
+pet_counts <- table(completeMoreData$pets)
+
+# Calculating the percentage for each category
+pet_percentages <- (pet_counts / total_entries) * 100
+
+pet_percentages
+```
+```{r}
+# Summarizing the percentages for each category in the "pets" column
+pet_counts <- completeMoreData %>%
+  group_by(pets) %>%
+  summarise(count = n()) %>%
+  mutate(percentage = (count / sum(count)) * 100)
+
+# Creating the pie chart with conditional labels
+ggplot(pet_counts, aes(x = "", y = percentage, fill = pets)) +
+  geom_bar(stat = "identity", width = 1, color = "white") + 
+  coord_polar("y") +  
+  labs(title = "Percentage Distribution of Pet Preferences", fill = "Pets") +
+  theme_minimal() +  
+  theme(
+    panel.background = element_rect(fill = "#5DC0F8", color = NA),  
+    plot.background = element_rect(fill = "#5DC0F8", color = NA),   
+    panel.grid.major = element_blank(),  
+    panel.grid.minor = element_blank(),  
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"), 
+    axis.title.x = element_blank(),  
+    axis.title.y = element_blank(),  
+    axis.text = element_blank(),  
+    axis.ticks = element_blank()  
+  ) +
+  scale_fill_manual(values = c(
+    "dislikes cats" = "#FF6347",  
+    "dislikes dogs" = "#4682B4",  
+    "dislikes dogs and dislikes cats" = "#32CD32",  
+    "dislikes dogs and has cats" = "#FFD700",  
+    "dislikes dogs and likes cats" = "#8A2BE2",  
+    "has cats" = "#D2691E",  
+    "has dogs" = "#FF4500",  
+    "has dogs and dislikes cats" = "#1E90FF",  
+    "has dogs and has cats" = "#7FFF00",  
+    "has dogs and likes cats" = "#9370DB",  
+    "likes cats" = "#FF69B4",  
+    "likes dogs" = "#B22222",  
+    "likes dogs and dislikes cats" = "#3CB371",  
+    "likes dogs and has cats" = "#DA70D6",  
+    "likes dogs and likes cats" = "#FFD700"  
+  )) +
+  geom_text(aes(label = ifelse(pets == "dislikes dogs and dislikes cats" | percentage >= 5, 
+                               paste0(round(percentage, 1), "%"), "")), 
+            position = position_stack(vjust = 0.5), 
+            size = 5,              
+            fontface = "bold",     
+            color = "black")       
+```
+
+```{r}
+ggplot(completeMoreData, aes(x = status, y = income, fill = status)) +
+  geom_boxplot(outlier.colour = "black", outlier.shape = 16, outlier.size = 2, notch = FALSE) +
+  labs(title = "Income Distribution by Relationship Status", x = "Relationship Status", y = "Income") +
+  theme_minimal() +
+  theme(
+    panel.background = element_rect(fill = "#5DC0F8", color = NA),  
+    plot.background = element_rect(fill = "#5DC0F8", color = NA),   
+    panel.grid.major = element_blank(),  
+    panel.grid.minor = element_blank(),  
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  
+    legend.position = "none",  
+    axis.title = element_text(size = 14, face = "bold"),  
+    axis.text = element_text(size = 12, face = "bold")    
+  ) +
+  scale_fill_manual(values = c(
+    "available" = "#FF6347",    
+    "married" = "#4682B4",      
+    "seeing someone" = "#32CD32",
+    "single" = "#FFD700",       
+    "unknown" = "#8A2BE2"       
+  ))
+```
+
+```{r}
+# Grouped boxplot for Income vs Job grouped by Relationship Status
+ggplot(completeMoreData, aes(x = job, y = income, fill = status)) +
+  geom_boxplot(outlier.colour = "black", outlier.shape = 16, outlier.size = 2, notch = FALSE) +
+  labs(title = "Income Distribution by Job and Relationship Status", x = "Job", y = "Income") +
+  theme_minimal() +
+  theme(
+    panel.background = element_rect(fill = "#5DC0F8", color = NA),  
+    plot.background = element_rect(fill = "#5DC0F8", color = NA),   
+    panel.grid.major = element_blank(),  
+    panel.grid.minor = element_blank(),  
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  
+    axis.title = element_text(size = 14, face = "bold"),  
+    axis.text = element_text(size = 12, face = "bold"),   
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)  
+  ) +
+  scale_fill_manual(values = c(
+    "available" = "#FF6347",    
+    "married" = "#4682B4",      
+    "seeing someone" = "#32CD32",
+    "single" = "#FFD700",       
+    "unknown" = "#8A2BE2"       
+  ))
+```
+
+```{r}
+# Grouped boxplot for Income vs Orientation colored by Status
+ggplot(completeMoreData, aes(x = orientation, y = income, fill = status)) + 
+  geom_boxplot(outlier.colour = "black", outlier.shape = 16, outlier.size = 2, notch = FALSE) + 
+  labs(title = "Income Distribution by Orientation and Relationship Status", 
+       x = "Orientation", 
+       y = "Income", 
+       fill = "Relationship Status") + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5)) +
+  scale_fill_manual(values = c(
+    "available" = "#FF6347",    
+    "married" = "#4682B4",      
+    "seeing someone" = "#32CD32",
+    "single" = "#FFD700",       
+    "unknown" = "#8A2BE2"       
+  ))
+```
+
+```{r}
+# Plot for Age Distribution by Gender and Relationship Status
+ggplot(completeMoreData, aes(x = age, fill = status)) +
+  geom_density(alpha = 0.6) + 
+  facet_wrap(~sex) +  
+  labs(title = "Age Distribution by Gender and Relationship Status", x = "Age", fill = "Relationship Status") +
+  theme_minimal() + 
+  theme(
+    panel.background = element_rect(fill = "#5DC0F8", color = NA),  
+    plot.background = element_rect(fill = "#5DC0F8", color = NA),   
+    panel.grid.major = element_blank(),  
+    panel.grid.minor = element_blank(),  
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  
+    legend.position = "right",  
+    axis.title = element_text(size = 14, face = "bold"),  
+    axis.text = element_text(size = 12, face = "bold")    
+  ) +
+  scale_fill_manual(values = c(
+    "available" = "#FF6347",    
+    "married" = "#4682B4",      
+    "seeing someone" = "#32CD32",
+    "single" = "#FFD700",       
+    "unknown" = "#8A2BE2"       
+  ))
+```
+
+```{r}
+# Getting the total number of users
+total_users <- nrow(completeMoreData)
+
+# Getting the top 10 cities with the most users and calculating the percentage
+top_cities <- completeMoreData %>%
+  group_by(city) %>%
+  summarise(user_count = n()) %>%
+  mutate(percentage = (user_count / total_users) * 100) %>%
+  arrange(desc(user_count)) %>%
+  top_n(10, user_count)
+
+# Plot Top 10 Cities by User Count with Percentage Labels
+ggplot(top_cities, aes(x = reorder(city, -user_count), y = user_count)) +
+  geom_bar(stat = "identity", fill = "#FFD700") +  
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), 
+            vjust = -0.5, size = 5, color = "black", fontface = "bold") +  
+  labs(title = "Top 10 Cities with Most Users", x = "City", y = "Count of Users") +
+  theme_minimal() +
+  theme(
+    panel.background = element_rect(fill = "#5DC0F8", color = NA),  
+    plot.background = element_rect(fill = "#5DC0F8", color = NA),   
+    panel.grid.major = element_blank(),  
+    panel.grid.minor = element_blank(),  
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  
+    legend.position = "none",  
+    axis.title = element_text(size = 14, face = "bold"),  
+    axis.text = element_text(size = 12, face = "bold"),   
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)  
+  )
+```
+
+```{r}
+# Calculating the percentages for each education status
+total_users <- nrow(completeMoreData)
+
+# Grouping by the education status and calculateing the count and percentage
+top_edu_statuses <- completeMoreData %>%
+  group_by(statEDU) %>%
+  summarise(user_count = n()) %>%
+  mutate(percentage = (user_count / total_users) * 100) %>%
+  arrange(desc(user_count)) %>%
+  top_n(10, user_count)
+
+ggplot(top_edu_statuses, aes(x = reorder(statEDU, -percentage), y = percentage)) +
+  geom_bar(stat = "identity", fill = "#FFD700") +  
+  geom_text(aes(label = paste0(round(percentage, 1), "%")), 
+            vjust = -0.5, size = 5, color = "black", fontface = "bold") +  
+  labs(title = "Top 10 Education Statuses", x = "Education Status", y = "Percentage") +
+  theme_minimal() +
+  theme(
+    panel.background = element_rect(fill = "#5DC0F8", color = NA),  
+    plot.background = element_rect(fill = "#5DC0F8", color = NA),   
+    panel.grid.major = element_blank(),  
+    panel.grid.minor = element_blank(),  
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  
+    legend.position = "none",  
+    axis.title = element_text(size = 14, face = "bold"),  
+    axis.text = element_text(size = 12, face = "bold"),   
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)  
+  )
+
+```
+
+```{r}
+# Filter the top 10 cities with the most users
+top_cities <- completeMoreData %>%
+  group_by(city) %>%
+  summarise(user_count = n()) %>%
+  arrange(desc(user_count)) %>%
+  top_n(10, user_count)
+
+# Filter data to only include users from the top 10 cities
+filtered_data <- completeMoreData %>% filter(city %in% top_cities$city)
+
+# Boxplot for Age distribution by Top 10 Cities
+ggplot(filtered_data, aes(x = reorder(city, age, FUN = median), y = age)) + 
+  geom_boxplot(fill = "#FFD700", color = "black", outlier.colour = "red", outlier.size = 2) +
+  labs(title = "Age Distribution by Top 10 Cities", x = "City", y = "Age") +
+  coord_flip() +  # Flip the axes
+  theme_minimal() +
+  theme(
+    panel.background = element_rect(fill = "#5DC0F8", color = NA),  
+    plot.background = element_rect(fill = "#5DC0F8", color = NA),   
+    panel.grid.major = element_blank(),  
+    panel.grid.minor = element_blank(),  
+    plot.title = element_text(hjust = 0.5, size = 16, face = "bold"),  
+    axis.title = element_text(size = 14, face = "bold"),  
+    axis.text = element_text(size = 12, face = "bold")    
+  )
+```
